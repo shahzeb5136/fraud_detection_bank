@@ -1,0 +1,44 @@
+{
+  "app_version": "1.0.0",
+  "built_at": "2026-09-08T13:01:18+00:00",
+  "seed": 20260908,
+  "as_of_date": "2026-09-08",
+  "history_days": 540,
+  "split": {
+    "train_end": 360,
+    "valid_end": 420,
+    "test_end": 480
+  },
+  "label_maturity_days": 60,
+  "policy": {
+    "approve_max": 0.04,
+    "monitor_max": 0.12,
+    "stepup_max": 0.35
+  },
+  "n_features": 85,
+  "hashes": {
+    "models.pkl": "4e509430db0e540b",
+    "bayes.pkl": "9ed1ad75e8f4729a",
+    "lookups.pkl": "9cbcfb0fd037b025",
+    "features.parquet": "f859da3df015d50a",
+    "scores.parquet": "bbb9871e2f9a8ffb",
+    "data/transactions.parquet": "5690c9b700e2c8dc"
+  },
+  "model_version": "fl-017974c9e3",
+  "libraries": {
+    "python": "3.12.9",
+    "numpy": "2.4.0",
+    "pandas": "3.0.2",
+    "sklearn": "1.8.0",
+    "xgboost": "3.4.1"
+  },
+  "world": {
+    "n_legit_rows_generated": 201250,
+    "n_victims": 393,
+    "n_episodes": 475,
+    "start": "2025-03-17",
+    "as_of": "2026-09-08",
+    "seed": 20260908
+  },
+  "build_seconds": 146.6
+}

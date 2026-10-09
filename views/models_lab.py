@@ -73,7 +73,7 @@ def render():
         ui.plot(fig)
 
     # ------------------------------------------------------------------ policy economics
-    ui.section("Decision thresholds and economics", "Move the sliders in the sidebar of Live scoring to change the policy; this section shows what the policy does on the test window.")
+    ui.section("Decision thresholds and economics", "Change the thresholds under Decision policy in the sidebar; this section shows what that policy does on the test window.")
     pol = ui.get_policy()
     te = sc[sc.split == "test"]
     y, p, amt = te.fraud_label.to_numpy(), te.p_blend.to_numpy(), te.transaction_amt.abs().to_numpy()
@@ -84,15 +84,15 @@ def render():
             cm = confusion_at(y, p, thr)
             rows.append(dict(action=name, threshold=thr, alerts=cm["tp"] + cm["fp"], alert_rate=cm["alert_rate"], fraud_caught=cm["tp"], fraud_missed=cm["fn"], false_alerts=cm["fp"], precision=cm["precision"], recall=cm["recall"]))
         st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True,
-                     column_config={"threshold": st.column_config.NumberColumn(format="%.3f"), "alert_rate": st.column_config.NumberColumn("alert rate", format="%.2%"),
-                                    "precision": st.column_config.NumberColumn(format="%.1%"), "recall": st.column_config.NumberColumn(format="%.1%")})
+                     column_config={"threshold": st.column_config.NumberColumn(format="%.3f"), "alert_rate": st.column_config.NumberColumn("alert rate", format="percent"),
+                                    "precision": st.column_config.NumberColumn(format="percent"), "recall": st.column_config.NumberColumn(format="percent")})
         r = ev["curves"]["blend"]["alert"]
         fig = go.Figure(go.Scatter(x=r["rate"], y=r["recall"], mode="lines", line=dict(color=C.MODEL_COLORS["blend"], width=2), name="blend", hovertemplate="alert %{x:.1%} of authorisations<br>catches %{y:.0%} of fraud<extra></extra>"))
         fig.update_layout(title="Fraud caught vs share of authorisations alerted", xaxis=dict(title="alert rate", tickformat=".0%"), yaxis=dict(title="fraud recall", tickformat=".0%"), height=260)
         ui.plot(fig)
     with b:
         c1, c2 = st.columns(2)
-        friction = c1.slider("Cost of a false decline (£, friction + attrition)", 1.0, 60.0, 8.0, 1.0, key="ml_friction")
+        friction = c1.slider("Cost of a false decline (£, friction + attrition)", 1.0, 60.0, float(min(max(ui.get_friction(), 1.0), 60.0)), 1.0, key="ml_friction")
         recov = c2.slider("Share of fraud value recovered anyway (chargeback)", 0.0, 0.9, 0.3, 0.05, key="ml_recov")
         thr = np.linspace(0.005, 0.9, 120)
         cost = []
@@ -114,8 +114,11 @@ def render():
     # ------------------------------------------------------------------ recall by typology
     a, b = st.columns([1.2, 1])
     with a:
-        ty = pd.DataFrame(ev["typology"])
-        ty = ty[ty.typology != "genuine"]
+        # tier mix per typology under the current policy (the stored evaluation used the default policy)
+        tt = pd.DataFrame({"typology": te.fraud_typology.fillna("genuine").to_numpy(), "tier": ui.tiers_now(p)})
+        tt = tt[tt.typology != "genuine"]
+        ty = pd.crosstab(tt.typology, tt.tier, normalize="index").reindex(columns=[t[0] for t in C.TIERS], fill_value=0.0)
+        ty = ty.reindex([t for t in C.TYPOLOGIES if t in ty.index]).reset_index()
         fig = go.Figure()
         for t, lab, s in C.TIERS:
             fig.add_trace(go.Bar(x=[C.TYPOLOGY_SHORT.get(x, x) for x in ty.typology], y=ty[t], name=lab, marker=dict(color=STATUS[s], line=dict(color=P["surface"], width=1)),
@@ -170,7 +173,7 @@ def render():
         plt.close(fig_m)
     with b:
         lt = tree.leaf_table.sort_values("rate", ascending=False).head(12).reset_index()
-        st.dataframe(lt, width="stretch", hide_index=True, height=330, column_config={"leaf": "leaf id", "n_train": "training rows", "n_fraud": "fraud", "rate": st.column_config.NumberColumn("fraud rate", format="%.2%")})
+        st.dataframe(lt, width="stretch", hide_index=True, height=330, column_config={"leaf": "leaf id", "n_train": "training rows", "n_fraud": "fraud", "rate": st.column_config.NumberColumn("fraud rate", format="percent")})
         with st.expander("Full rule set (text export)"):
             st.code(ev["tree_rules"], language="text")
 

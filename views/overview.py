@@ -38,8 +38,9 @@ def render():
     n, y = len(recent), int(recent.fraud_label.sum())
     lo, hi = beta.ppf([0.025, 0.975], y + 0.5, n - y + 0.5)
     losses = recent[(recent.fraud_label == 1) & (recent.auth_result == "approved")].transaction_amt.sum()
-    live = sc[sc.split == "live"]
-    alerts = live[live.tier.isin(["STEP_UP", "DECLINE"])]
+    live = sc[sc.split == "live"].copy()
+    live["tier"] = ui.tiers_now(live.p_blend)          # under the policy currently set in the sidebar
+    alerts = live[live.tier.isin(ui.ALERT_TIERS)]
     m = ev["metrics"]["blend"]
     rhat_max = max(h["rhat"] for h in ev["bayes_vendor_hyper"] + ev["bayes_person_hyper"])
     ui.kpi_row([

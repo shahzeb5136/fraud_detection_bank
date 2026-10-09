@@ -15,23 +15,17 @@ def render():
     persons, sc = store.persons, store.scores
     ui.page_header("Customer 360", "Per-customer behavioural baseline: what 'normal' looks like for this cardholder, and how every one of their transactions was scored.")
 
-    c1, c2, c3 = st.columns([2, 1, 1])
-    options = persons.index.tolist()
+    c1, c2 = st.columns([2, 2], vertical_alignment="bottom")
     with c1:
-        pid = st.selectbox("Customer", options, index=options.index(st.session_state.get("person_sel", options[0])),
-                           format_func=lambda x: f"{x} · {persons.loc[x].segment.replace('_', ' ')} · {persons.loc[x].home_city}", key="c360_person")
-        st.session_state["person_sel"] = pid
+        pid = ui.customer_picker(store, key="c360_person")
     with c2:
-        if st.button("Random customer", width="stretch"):
-            st.session_state["person_sel"] = str(np.random.default_rng().choice(options)); st.rerun()
-    with c3:
-        if st.button("Random fraud victim", width="stretch"):
-            st.session_state["person_sel"] = str(np.random.default_rng().choice(store.episodes.person_id.unique())); st.rerun()
+        ui.random_customer_buttons(store, key="c360")
 
     p = persons.loc[pid]
     hist = store.person_history(pid)
     ok = hist[hist.auth_result == "approved"]
-    my = sc[sc.person_id == pid].sort_values("t_sec")
+    my = sc[sc.person_id == pid].sort_values("t_sec").copy()
+    my["tier"] = ui.tiers_now(my.p_blend)          # tiers under the policy currently set in the sidebar
     pm = store.bayes["person"]
     prop = pm.person_rate(pid)
     n_fraud = int(hist.fraud_label.sum())
@@ -116,7 +110,9 @@ def render():
         pol = ui.get_policy()
         for thr, lab in [(pol["approve_max"], "monitor"), (pol["monitor_max"], "step-up"), (pol["stepup_max"], "decline")]:
             fig.add_hline(y=thr, line=dict(color=P["axis"], width=1, dash="dot"), annotation_text=lab, annotation_position="right", annotation_font=dict(size=10, color=P["muted"]))
-        fig.update_layout(title="Fraud probability per authorisation (× = fraud attempt in simulation truth; colour = policy tier)", height=320, yaxis=dict(type="log", title="fraud probability", tickformat=".3f"), showlegend=False)
+        ticks = [10.0 ** k for k in range(-6, 1)]
+        fig.update_layout(title="Fraud probability per authorisation (× = fraud attempt in simulation truth; colour = policy tier)", height=320, showlegend=False,
+                          yaxis=dict(type="log", title="fraud probability (log scale)", tickvals=ticks, ticktext=[f"{100 * t:g}%" for t in ticks]))
         ui.plot(fig)
         tab = my[["transaction_id", "transaction_timestamp", "vendor_id", "transaction_amt", "channel", "merchant_country", "p_blend", "p_xgb", "p_tree", "p_bayes_vendor", "tier", "label_status", "fraud_truth", "fraud_typology"]].copy()
         tab["merchant"] = tab.vendor_id.map(store.vendors.vendor_name)

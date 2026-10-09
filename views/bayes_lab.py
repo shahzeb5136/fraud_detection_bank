@@ -33,7 +33,8 @@ a_m &\sim \mathcal{N}(\mu,\; \sigma_m^2)\\
     with b:
         ui.section("Customer propensity: Beta-Binomial", "How likely is *this* customer's next authorisation to be fraud, given their own history?")
         st.latex(r"""\begin{aligned}
-y_p &\sim \mathrm{Binomial}(n_p,\; \theta_p), \qquad \theta_p \sim \mathrm{Beta}(\kappa\phi,\; \kappa(1-\phi))\\
+y_p &\sim \mathrm{Binomial}(n_p,\; \theta_p)\\
+\theta_p &\sim \mathrm{Beta}(\kappa\phi,\; \kappa(1-\phi))\\
 \phi &\sim \mathrm{Beta}(2, 200), \qquad \log\kappa \sim \mathcal{N}(\log 50,\; 1)\\
 \theta_p \mid y_p, \phi, \kappa &\sim \mathrm{Beta}(\kappa\phi + y_p,\; \kappa(1-\phi) + n_p - y_p)
 \end{aligned}""")
@@ -61,10 +62,10 @@ y_p &\sim \mathrm{Binomial}(n_p,\; \theta_p), \qquad \theta_p \sim \mathrm{Beta}
         ui.plot(ui.density_fig(expit(D["mu"].reshape(-1)), "σ(μ)", P["series"][0], title="Posterior of the population fraud rate σ(μ)", xtitle="fraud rate"), height=230)
     with b:
         ui.plot(ui.trace_fig(D["sigma_m"], "σ_mcc"))
-        ui.plot(ui.density_fig(D["sigma_m"].reshape(-1), "σ_mcc", P["series"][1], title="Posterior of σ_mcc (spread between categories)", xtitle="σ_mcc"), height=230)
+        ui.plot(ui.density_fig(D["sigma_m"].reshape(-1), "σ_mcc", P["series"][1], title="Posterior of σ_mcc (spread between categories)", xtitle="σ_mcc (log-odds)", xfmt=".2f"), height=230)
     with c:
         ui.plot(ui.trace_fig(D["sigma_v"], "σ_vendor"))
-        ui.plot(ui.density_fig(D["sigma_v"].reshape(-1), "σ_vendor", P["series"][2], title="Posterior of σ_vendor (spread within a category)", xtitle="σ_vendor"), height=230)
+        ui.plot(ui.density_fig(D["sigma_v"].reshape(-1), "σ_vendor", P["series"][2], title="Posterior of σ_vendor (spread within a category)", xtitle="σ_vendor (log-odds)", xfmt=".2f"), height=230)
 
     # ------------------------------------------------------------------ MCC forest + shrinkage
     ui.section("What the hierarchy learned", "Category effects with credible intervals, and how individual merchants are pulled towards their category.")

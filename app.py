@@ -58,5 +58,6 @@ pages = {
 st.session_state["pages"] = {pg.url_path: pg for group in pages.values() for pg in group}
 nav = st.navigation(pages, position="sidebar")
 store = ui.get_store()
+ui.policy_sidebar()
 ui.sidebar_footer(store)
 nav.run()

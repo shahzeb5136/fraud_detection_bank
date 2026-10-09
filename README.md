@@ -14,12 +14,16 @@ streamlit run app.py
 
 (Or simply `streamlit run app.py` and press **Build the demo now** on first launch.)
 
+The approve / monitor / step-up thresholds and the false-decline cost sit under **Decision policy** in the sidebar of every page; Command centre, Live scoring, Customer 360, Portfolio analytics and Model lab all re-evaluate their alerts under it.
+
+`python -m pytest -q` checks that replaying a stored transaction through the live pipeline reproduces its batch features and score, and that stream alerts group into cases.
+
 ## What is inside
 
 | Page | What it shows |
 |---|---|
 | Command centre | Portfolio KPIs, fraud rate over time with Bayesian intervals, alert load, how a transaction is scored |
-| Live scoring | Score a hand-built authorisation (7 scenario presets) or replay the unlabelled live window; SHAP, tree path, scorecard points, Bayesian posteriors, feature lineage, audit JSON |
+| Live scoring | Score a hand-built authorisation (7 scenario presets) or replay the unlabelled live window, where alerts are grouped into per-customer cases (a card-testing burst is one case, not twelve alerts); SHAP, tree path, scorecard points, Bayesian posteriors, feature lineage, audit JSON |
 | Customer 360 | A cardholder's habits (merchants, hours, amounts, geography), Bayesian propensity and their scored history |
 | Portfolio analytics | Fraud on an overall basis: by week, channel, MCC, country, hour; merchant risk league; label maturity; policy load |
 | Model lab | Time-based split, out-of-time metrics, ROC/PR/calibration, threshold economics, recall by typology, XGBoost/tree/scorecard/stacker internals, model card |

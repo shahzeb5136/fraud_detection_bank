@@ -1,6 +1,7 @@
 """Streamlit UI helpers: theme, CSS, chart factory and shared state."""
 from __future__ import annotations
 
+import html
 import json
 
 import numpy as np
@@ -38,8 +39,106 @@ def get_policy() -> dict:
     return st.session_state["policy"]
 
 
+def get_friction() -> float:
+    return float(st.session_state.get("pol_f", 8.0))
+
+
+def tiers_now(p) -> np.ndarray:
+    """Policy tier of each probability under the policy currently set in the sidebar (the stored `tier` column
+    reflects the default policy at build time)."""
+    from .models import tiers_vec
+    return tiers_vec(np.asarray(p, dtype=float), get_policy())
+
+
+ALERT_TIERS = ("STEP_UP", "DECLINE")
+_POLICY_KEYS = {"pol_a": "approve_max", "pol_m": "monitor_max", "pol_s": "stepup_max"}
+
+
+def _apply_policy():
+    ss = st.session_state
+    get_policy().update(approve_max=ss["pol_a"], monitor_max=ss["pol_m"], stepup_max=ss["pol_s"])
+
+
+def _on_policy_change(changed: str):
+    """Keep approve < monitor < step-up by nudging the neighbouring sliders (callbacks run before the widgets)."""
+    ss = st.session_state
+    a, m, s = ss["pol_a"], ss["pol_m"], ss["pol_s"]
+    if changed == "pol_a":
+        m = max(m, round(a + 0.005, 3))
+        s = max(s, round(m + 0.01, 2))
+    elif changed == "pol_m":
+        a = min(a, round(m - 0.005, 3))
+        s = max(s, round(m + 0.01, 2))
+    else:
+        m = min(m, round(s - 0.005, 3))
+        a = min(a, round(m - 0.005, 3))
+    ss["pol_a"], ss["pol_m"], ss["pol_s"] = a, m, s
+
+
+def _reset_policy():
+    for k, field in _POLICY_KEYS.items():
+        st.session_state[k] = C.DEFAULT_POLICY[field]
+    st.session_state["pol_f"] = 8.0
+
+
+def policy_sidebar():
+    """App-wide decision policy. It lives in the sidebar of every page because Command centre, Live scoring,
+    Customer 360, Portfolio analytics and Model lab all evaluate the same thresholds."""
+    pol = get_policy()
+    for k, field in _POLICY_KEYS.items():
+        st.session_state.setdefault(k, float(pol[field]))
+    st.session_state.setdefault("pol_f", 8.0)
+    with st.sidebar.expander("Decision policy", icon=":material/tune:"):
+        st.slider("Approve below", 0.005, 0.20, step=0.005, format="%.3f", key="pol_a", on_change=_on_policy_change, args=("pol_a",))
+        st.slider("Monitor below", 0.01, 0.40, step=0.005, format="%.3f", key="pol_m", on_change=_on_policy_change, args=("pol_m",))
+        st.slider("Step-up below (decline at or above)", 0.02, 0.90, step=0.01, format="%.2f", key="pol_s", on_change=_on_policy_change, args=("pol_s",))
+        st.number_input("Friction cost of a false decline (£)", 0.0, 100.0, step=1.0, key="pol_f")
+        st.button("Reset to default policy", on_click=_reset_policy, width="stretch")
+    _apply_policy()
+
+
 def audit_log() -> list:
     return st.session_state.setdefault("audit", [])
+
+
+# ----------------------------------------------------------------------------------------------
+# customer selection shared by Live scoring and Customer 360
+# ----------------------------------------------------------------------------------------------
+PERSON_KEY = "person_sel"
+
+
+def selected_person(store: Store) -> str:
+    pid = st.session_state.get(PERSON_KEY)
+    if pid not in store.persons.index:
+        pid = store.persons.index[0]
+        st.session_state[PERSON_KEY] = pid
+    return pid
+
+
+def _pick_random_person(options):
+    st.session_state[PERSON_KEY] = str(np.random.default_rng().choice(options))
+
+
+def customer_picker(store: Store, key: str, label: str = "Customer") -> str:
+    """Selectbox bound to the app-wide selected customer.
+
+    A keyed Streamlit widget ignores `index=` once it holds state, so the selection is written into the widget's
+    own key before it renders; edits flow back through `on_change`. This is what makes the random buttons work."""
+    persons = store.persons
+    st.session_state[key] = selected_person(store)
+    st.selectbox(label, persons.index.tolist(), key=key,
+                 format_func=lambda x: f"{x} · {persons.loc[x].segment.replace('_', ' ')} · {persons.loc[x].home_city}",
+                 on_change=lambda: st.session_state.update({PERSON_KEY: st.session_state[key]}))
+    return st.session_state[PERSON_KEY]
+
+
+def random_customer_buttons(store: Store, key: str, compact: bool = False):
+    a, b = st.columns(2)
+    a.button("Random" if compact else "Random customer", key=f"{key}_rand", icon=":material/shuffle:", width="stretch",
+             on_click=_pick_random_person, args=(store.persons.index.to_numpy(),), help="Any customer, picked at random.")
+    b.button("Fraud victim" if compact else "Random fraud victim", key=f"{key}_victim", icon=":material/gpp_maybe:", width="stretch",
+             on_click=_pick_random_person, args=(store.episodes.person_id.unique(),),
+             help="A customer who suffered at least one fraud episode in the simulation.")
 
 
 # ----------------------------------------------------------------------------------------------
@@ -93,6 +192,13 @@ h1, h2, h3 {{ letter-spacing: -0.01em; }}
 .fl-rule {{ font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; padding: 6px 10px; border-left: 3px solid {P['series'][1]}; background: #fff7f3; margin: 4px 0; border-radius: 0 6px 6px 0; color: var(--ink); }}
 .fl-note {{ font-size: 12.5px; color: var(--ink2); background: #f3f3f0; border-radius: 8px; padding: 10px 12px; border: 1px solid rgba(11,11,11,0.08); }}
 .fl-small {{ font-size: 12px; color: var(--muted); }}
+.fl-chart-title {{ font-size: 13px; font-weight: 650; color: var(--ink); line-height: 1.3; margin: 6px 0 -6px 0; }}
+.fl-txn {{ background: #ffffff; border: 1px solid rgba(11,11,11,0.10); border-radius: 12px; padding: 12px 16px; display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 18px; }}
+.fl-txn .l {{ font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }}
+.fl-txn .v {{ font-size: 13.5px; font-weight: 600; color: var(--ink); margin-top: 2px; }}
+.fl-txn .s {{ font-size: 11.5px; color: var(--ink2); }}
+.fl-case {{ border-radius: 10px; padding: 10px 14px; border: 1px solid {P['status']['serious']}55; background: {P['status']['serious']}12; font-size: 13px; color: var(--ink); }}
 section[data-testid="stSidebar"] .fl-brand {{ font-size: 20px; font-weight: 700; color: #ffffff; letter-spacing: -0.01em; }}
 section[data-testid="stSidebar"] .fl-brand-sub {{ font-size: 11.5px; color: #b9c8de; margin-bottom: 8px; }}
 section[data-testid="stSidebar"] .fl-side-kv {{ font-size: 11.5px; color: #b9c8de; line-height: 1.5; }}
@@ -192,7 +298,20 @@ def decision_banner(trace: dict):
 # ----------------------------------------------------------------------------------------------
 # charts
 # ----------------------------------------------------------------------------------------------
+def _legend_visible(fig: go.Figure) -> bool:
+    if fig.layout.showlegend is not None:
+        return bool(fig.layout.showlegend)
+    return sum(1 for t in fig.data if t.showlegend is not False) > 1
+
+
 def plot(fig: go.Figure, height: int | None = None, key: str | None = None):
+    """Render a figure. Its title is lifted into HTML above the chart so long titles wrap instead of being clipped
+    at the column edge or drawn underneath a top legend."""
+    title = fig.layout.title.text
+    if title:
+        st.html(f'<div class="fl-chart-title">{html.escape(title)}</div>')
+        # keep room for a top legend, or for vline annotations / outside bar labels
+        fig.update_layout(title_text="", margin=dict(t=40 if _legend_visible(fig) else 28))
     if height:
         fig.update_layout(height=height)
     st.plotly_chart(fig, width="stretch", key=key, config=dict(displayModeBar=False, responsive=True))
@@ -211,7 +330,7 @@ def gauge_fig(p: float, policy: dict) -> go.Figure:
                    bar=dict(color=P["ink"], thickness=0.22), bgcolor=P["surface"], borderwidth=0, steps=steps,
                    threshold=dict(line=dict(color=P["ink"], width=2), thickness=0.8, value=100 * p)),
     ))
-    fig.update_layout(height=210, margin=dict(l=20, r=20, t=20, b=6), paper_bgcolor="rgba(0,0,0,0)")
+    fig.update_layout(height=210, margin=dict(l=28, r=34, t=20, b=6), paper_bgcolor="rgba(0,0,0,0)")
     return fig
 
 
@@ -260,7 +379,7 @@ def waterfall_fig(blend: dict) -> go.Figure:
                                  totals=dict(marker=dict(color=P["ink"], line_width=0)),
                                  text=[f"{v:+.2f}" for v in y], textposition="outside", textfont=dict(size=11),
                                  hovertemplate="%{x}<br>%{y:+.3f}<extra></extra>"))
-    fig.update_layout(title="How the blend arrives at its log-odds: intercept + Σ weight × component log-odds", yaxis_title="log-odds", height=280,
+    fig.update_layout(title="How the blend reaches its log-odds: intercept + Σ weight × component log-odds", yaxis_title="log-odds", height=280,
                       margin=dict(l=48, r=16, t=40, b=40), xaxis=dict(tickfont=dict(size=11)), showlegend=False)
     return fig
 
@@ -318,27 +437,45 @@ def heatmap_fig(z, x, y, title="", zfmt=".2%", colorscale=None, height=320) -> g
 
 def hist_fig(values, name="", color=None, title="", nbins=40, xtitle="", log_x=False, vline=None, vline_label=None, height=280) -> go.Figure:
     color = color or P["series"][0]
-    fig = go.Figure(go.Histogram(x=values, nbinsx=nbins, marker=dict(color=color, line=dict(color=P["surface"], width=1)), name=name,
-                                 hovertemplate="%{x}<br>count %{y}<extra></extra>"))
+    marker = dict(color=color, line=dict(color=P["surface"], width=1))
+    if log_x:
+        # Plotly cannot bin a histogram on a log axis (it renders empty), so bin log10(x) and label the ticks in x.
+        v = np.asarray(values, dtype=float)
+        lv = np.log10(v[v > 0])
+        counts, edges = np.histogram(lv, bins=nbins) if len(lv) else (np.array([]), np.array([0.0, 1.0]))
+        fig = go.Figure(go.Bar(x=(edges[:-1] + edges[1:]) / 2, y=counts, width=np.diff(edges), marker=marker, name=name,
+                               customdata=np.stack([10 ** edges[:-1], 10 ** edges[1:]], axis=1),
+                               hovertemplate="%{customdata[0]:,.2f} – %{customdata[1]:,.2f}<br>count %{y}<extra></extra>"))
+        lo, hi = (edges[0], edges[-1]) if len(lv) else (0.0, 1.0)
+        if vline is not None and vline > 0:
+            lo, hi = min(lo, np.log10(vline)), max(hi, np.log10(vline))
+        steps = (1, 2, 5) if hi - lo <= 2.5 else (1,)          # one tick per decade when the range is wide
+        ticks = [m * 10.0 ** k for k in range(int(np.floor(lo)) - 1, int(np.ceil(hi)) + 1) for m in steps]
+        ticks = [t for t in ticks if lo - 0.05 <= np.log10(t) <= hi + 0.05]
+        fig.update_xaxes(tickvals=np.log10(ticks), ticktext=[fmt_num(float(t)) for t in ticks])
+        vline = np.log10(vline) if vline is not None and vline > 0 else None
+    else:
+        fig = go.Figure(go.Histogram(x=values, nbinsx=nbins, marker=marker, name=name, hovertemplate="%{x}<br>count %{y}<extra></extra>"))
     if vline is not None:
         fig.add_vline(x=vline, line=dict(color=P["diverging_pos"], width=2), annotation_text=vline_label or "", annotation_position="top right",
                       annotation_font=dict(size=11, color=P["diverging_pos"]))
     fig.update_layout(title=title, xaxis_title=xtitle, yaxis_title="count", height=height, bargap=0.05)
-    if log_x:
-        fig.update_xaxes(type="log")
     return fig
 
 
-def density_fig(draws: np.ndarray, name: str, color: str, title="", ref: float | None = None, ref_label="", xtitle="fraud rate", extra: list | None = None) -> go.Figure:
+def density_fig(draws: np.ndarray, name: str, color: str, title="", ref: float | None = None, ref_label="", xtitle="fraud rate", extra: list | None = None,
+                xfmt: str = ".1%") -> go.Figure:
+    """Posterior histogram. xfmt is the d3 tick format: '.1%' for rates, e.g. '.2f' for scale parameters."""
+    hover = f"{xtitle} %{{x:{'.2%' if xfmt.endswith('%') else xfmt}}}<br>density %{{y:.1f}}<extra></extra>"
     fig = go.Figure()
     fig.add_trace(go.Histogram(x=draws, histnorm="probability density", nbinsx=60, marker=dict(color=color, line=dict(color=P["surface"], width=1)),
-                               name=name, opacity=0.9, hovertemplate="rate %{x:.2%}<br>density %{y:.1f}<extra></extra>"))
+                               name=name, opacity=0.9, hovertemplate=hover))
     for e in extra or []:
         fig.add_trace(go.Histogram(x=e["draws"], histnorm="probability density", nbinsx=60, marker=dict(color=e["color"], line=dict(color=P["surface"], width=1)),
-                                   name=e["name"], opacity=0.55, hovertemplate="rate %{x:.2%}<br>density %{y:.1f}<extra></extra>"))
+                                   name=e["name"], opacity=0.55, hovertemplate=hover))
     if ref is not None:
         fig.add_vline(x=ref, line=dict(color=P["ink"], width=1.5, dash="dot"), annotation_text=ref_label, annotation_position="top right", annotation_font=dict(size=11))
-    fig.update_layout(title=title, xaxis=dict(title=xtitle, tickformat=".1%"), yaxis_title="posterior density", barmode="overlay", height=280)
+    fig.update_layout(title=title, xaxis=dict(title=xtitle, tickformat=xfmt), yaxis_title="posterior density", barmode="overlay", height=280)
     return fig
 
 

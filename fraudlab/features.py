@@ -430,7 +430,7 @@ def build_features(tx: pd.DataFrame, events: pd.DataFrame, start: pd.Timestamp, 
     F["descriptor_deviation"] = [descriptor_deviation(d, pats.get(v)) for d, v in zip(auth.transaction_detail_char, auth.vendor_id)]
 
     # affinity with monthly refits on strictly prior data
-    month = (auth.t_sec // (30 * DAY)).astype(int)
+    month = auth.t_sec.map(affinity_month)
     aff = np.full(len(auth), np.nan)
     for m in sorted(month.unique()):
         model = fit_affinity(tx[tx.t_sec < m * 30 * DAY])
@@ -472,8 +472,16 @@ def build_features(tx: pd.DataFrame, events: pd.DataFrame, start: pd.Timestamp, 
 # ----------------------------------------------------------------------------------------------
 # live scoring: same routine on (history + incoming transaction)
 # ----------------------------------------------------------------------------------------------
-def features_for_new_transaction(new: dict, history: pd.DataFrame, ev_t: np.ndarray, lk: dict, start: pd.Timestamp) -> pd.Series:
-    """history: this customer's earlier authorisation rows (prepared with `prepare_base`)."""
+def affinity_month(t_sec: float) -> int:
+    """Index of the monthly affinity refit that applies at time t_sec (same bucketing as the batch build)."""
+    return int(t_sec // (30 * DAY))
+
+
+def features_for_new_transaction(new: dict, history: pd.DataFrame, ev_t: np.ndarray, lk: dict, start: pd.Timestamp,
+                                 affinity_model: dict | None = None) -> pd.Series:
+    """history: this customer's earlier authorisation rows (prepared with `prepare_base`).
+    affinity_model: the user-vendor factorisation fitted on data before the transaction's month (as in the batch
+    build); defaults to the as-of-now model, which is only leakage-free for transactions after the history ends."""
     row = pd.DataFrame([new])
     row["transaction_timestamp_local"] = pd.to_datetime(row["transaction_timestamp_local"])
     row["hour_local"] = row.transaction_timestamp_local.dt.hour + row.transaction_timestamp_local.dt.minute / 60.0
@@ -511,7 +519,8 @@ def features_for_new_transaction(new: dict, history: pd.DataFrame, ev_t: np.ndar
     fs = lk["vendor_first_seen"].get(v, new["t_sec"])
     F["vendor_age_days"] = (new["t_sec"] - fs) / DAY
     F["descriptor_deviation"] = descriptor_deviation(new["transaction_detail_char"], lk["descriptor_patterns"].get(v))
-    F["user_vendor_affinity"] = float(affinity_lookup(lk["affinity_model"], [new["person_id"]], [v])[0])
+    model = affinity_model if affinity_model is not None else lk["affinity_model"]
+    F["user_vendor_affinity"] = float(affinity_lookup(model, [new["person_id"]], [v])[0])
     a = float(new["transaction_amt"])
     F["amount_gbp"] = a
     F["amount_log"] = float(np.log1p(max(a, 0)))

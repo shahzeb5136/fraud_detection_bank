@@ -69,7 +69,7 @@ class TreeModel:
         """Decision path as human-readable rules plus the leaf's training statistics."""
         tree = self.clf.tree_
         xv = x[self.features].to_numpy(dtype=float).reshape(1, -1)
-        node_ind = self.clf.decision_path(xv)
+        node_ind = self.clf.decision_path(pd.DataFrame(xv, columns=self.features))
         nodes = node_ind.indices
         steps = []
         for nid in nodes:

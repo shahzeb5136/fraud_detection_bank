@@ -128,7 +128,7 @@ def render():
                                                                           labelled=("fraud_label", "mean")).reset_index()
         typ["description"] = typ.fraud_typology.map(C.TYPOLOGIES)
         st.dataframe(typ[["fraud_typology", "description", "episodes", "rows", "value", "labelled"]], width="stretch", hide_index=True,
-                     column_config={"value": st.column_config.NumberColumn("attempted value", format="£%.0f"), "labelled": st.column_config.NumberColumn("share confirmed as fraud", format="%.0%"),
+                     column_config={"value": st.column_config.NumberColumn("attempted value", format="£%.0f"), "labelled": st.column_config.NumberColumn("share confirmed as fraud", format="percent"),
                                     "description": st.column_config.TextColumn(width="large")})
         st.caption("'Share confirmed' < 100% is deliberate label noise: silent victims, declined attempts that are never disputed, reversed disputes and friendly fraud.")
     with b:

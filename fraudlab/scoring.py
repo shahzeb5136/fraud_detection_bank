@@ -48,6 +48,17 @@ class Store:
         ev["t_sec"] = (ev.event_ts - self.start).dt.total_seconds()
         self.ev_by_person = {p: np.sort(g.t_sec.to_numpy()) for p, g in ev.groupby("person_id")}
         self.as_of = pd.Timestamp(C.AS_OF_DATE)
+        self._affinity_by_month = {}
+
+    def affinity_model(self, t_sec: float) -> dict | None:
+        """The user-vendor factorisation the batch build used for this month (fitted on strictly earlier data), so that
+        replaying a historical transaction reproduces its batch score instead of peeking at later behaviour."""
+        m = FE.affinity_month(t_sec)
+        if m * 30 * FE.DAY >= C.HISTORY_DAYS * FE.DAY:     # at or after the end of history: the as-of-now model
+            return self.lk["affinity_model"]
+        if m not in self._affinity_by_month:
+            self._affinity_by_month[m] = FE.fit_affinity(self.tx[self.tx.t_sec < m * 30 * FE.DAY])
+        return self._affinity_by_month[m]
 
     # convenience --------------------------------------------------------------------------------
     def person_history(self, person_id: str) -> pd.DataFrame:
@@ -152,7 +163,10 @@ def _top(contrib: pd.Series, k: int = 10):
     return [dict(feature=f, contribution=float(v)) for f, v in c.items()]
 
 
-def score_transaction(store: Store, txn: dict, policy: dict | None = None, friction_cost: float = 8.0, extra_history: pd.DataFrame | None = None) -> dict:
+def score_transaction(store: Store, txn: dict, policy: dict | None = None, friction_cost: float = 8.0, extra_history: pd.DataFrame | None = None,
+                      extra_event_times: np.ndarray | None = None) -> dict:
+    """extra_history / extra_event_times inject hypothetical prior activity (scenario presets) without touching the
+    shared Store, which is cached across all sessions."""
     policy = policy or C.DEFAULT_POLICY
     timings = {}
     t0 = time.perf_counter()
@@ -160,7 +174,9 @@ def score_transaction(store: Store, txn: dict, policy: dict | None = None, frict
     if extra_history is not None and len(extra_history):
         hist = pd.concat([hist, extra_history], ignore_index=True).sort_values("t_sec")
     ev_t = store.ev_by_person.get(txn["person_id"], np.array([]))
-    f = FE.features_for_new_transaction(txn, hist, ev_t, store.lk, store.start)
+    if extra_event_times is not None and len(extra_event_times):
+        ev_t = np.sort(np.concatenate([ev_t, np.asarray(extra_event_times, dtype=float)]))
+    f = FE.features_for_new_transaction(txn, hist, ev_t, store.lk, store.start, affinity_model=store.affinity_model(txn["t_sec"]))
     timings["features_ms"] = round((time.perf_counter() - t0) * 1000, 1)
     X = pd.DataFrame([f[FE.MODEL_FEATURES].astype(float)])
 
